@@ -1,20 +1,34 @@
-#include <uCamIII.h>
+/* *************************************************************************************
 
-// http://www.4dsystems.com.au/productpages/uCAM-III/downloads/uCAM-III_datasheet_R_1_0.pdf
-// CONNAMD FORMAT                        sync  cmd   par1  par2  par3  par4     			// par1 		par2		par3 		par4
-//const char uCamIII_INIT[]           = {0xAA, 0x01, 0x00, 0x07, 0x09, 0x07};				// 0x00			img format	raw res		JPEG res				
-//const char uCamIII_GET_PICTURE[]    = {0xAA, 0x04, 0x01, 0x00, 0x00, 0x00};				// pic type		0x00		0x00		0x00
-//const char uCamIII_SNAPSHOT[]       = {0xAA, 0x05, 0x00, 0x00, 0x00, 0x00};				// snap type	skip loByte	hiByte		0x00
-//const char uCamIII_SET_PACKSIZE[]   = {0xAA, 0x06, 0x08, 0x06, 0x00, 0x00};	            // 0x08			size loByte	hiByte		0x00
-//const char uCamIII_SET_BAUDRATE[]   = {0xAA, 0x07, 0x00, 0x00, 0x00, 0x00};				// 1.divider	2.divider	0x00		0x00
-//const char uCamIII_RESET[]          = {0xAA, 0x08, 0x00, 0x00, 0x00, 0x00};				// reset type	0x00		0x00		0xFF (force) 0x## (normal)
-//const char uCamIII_DATA[]           = {0xAA, 0x0A, 0x00, 0x00, 0x00, 0x00};				// data type	len byte0	byte1		byte2
-//const char uCamIII_SYNC[]           = {0xAA, 0x0D, 0x00, 0x00, 0x00, 0x00};				// 0x00			0x00		0x00		0x00
-//const char uCamIII_ACK[]            = {0xAA, 0x0E, 0x00, 0x00, 0x00, 0x00};				// cmd2ack		ack count	pkID loByte	hiByte
-//const char uCamIII_NAK[]            = {0xAA, 0x0F, 0x00, 0x00, 0x00, 0x00};				// 0x00			nak count	error no	0x00
-//const char uCamIII_SET_FREQ[]       = {0xAA, 0x13, 0x00, 0x00, 0x00, 0x00};				// freq type	0x00		0x00		0x00
-//const char uCamIII_SET_CBE[]        = {0xAA, 0x14, 0x00, 0x00, 0x00, 0x00};				// contrast		brightness	exposure	0x00
-//const char uCamIII_SLEEP[]          = {0xAA, 0x15, 0x00, 0x00, 0x00, 0x00};				// timeout		0x00		0x00		0x00
+http://www.4dsystems.com.au/productpages/uCAM-III/downloads/uCAM-III_datasheet_R_1_0.pdf
+
+----------------------------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) 2018 ScruffR (Andreas Rothenwänder)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+************************************************************************************* */
+
+#include <uCamIII.h>
 
 long uCamIII_Base::init() 
 {
