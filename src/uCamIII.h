@@ -104,27 +104,28 @@ typedef int (*uCamIII_callback)(uint8_t* buffer, int len, int id);
 
 class uCamIII_Base {
 public:
-  uCamIII_Base(Stream& cameraStream, int resetPin = -1, uint32_t timeout = 1000) 
-  : _cameraStream(cameraStream), _resetPin(resetPin), _timeout(timeout), _imageSize(0), _packageSize(64), _lastError(0) { } 
+  uCamIII_Base(Stream& cameraStream, int resetPin = -1, uint32_t timeout = 500) 
+  : _cameraStream(cameraStream), _resetPin(resetPin), _timeout(timeout), _imageSize(0), _packageSize(64), _lastError(0), _packageNumber(0) { } 
 
-  int               sync(int maxTry = 60);
-  int               getPicture(uCamIII_PIC_TYPE type = uCamIII_TYPE_JPEG);
-  int               getData(uint8_t *buffer, int len, uCamIII_callback callback = NULL, int package = -1);
+  long              sync(int maxTry = 60);
+  long              getPicture(uCamIII_PIC_TYPE type = uCamIII_TYPE_JPEG);
+  long              getJpegData(uint8_t *buffer, int len, uCamIII_callback callback = NULL, int package = -1);
+  long              getRawData(uint8_t *buffer, int len, uCamIII_callback callback = NULL);
   void              hardReset();
   
-  inline int        setImageFormat(uCamIII_IMAGE_FORMAT format = uCamIII_COMP_JPEG, uCamIII_RES resolution = uCamIII_640x480)
+  inline long       setImageFormat(uCamIII_IMAGE_FORMAT format = uCamIII_COMP_JPEG, uCamIII_RES resolution = uCamIII_640x480)
                     { Log.trace(__FUNCTION__); return sendCmdWithAck(uCamIII_CMD_INIT, 0x00, format, uCamIII_COMP_JPEG ? 0x09 : resolution, uCamIII_COMP_JPEG ? resolution : 0x03); }
-  inline int        takeSnapshot(uCamIII_SNAP_TYPE type = uCamIII_SNAP_JPEG, uint16_t frame = 0)
-                    { Log.trace(__FUNCTION__); int r = sendCmdWithAck(uCamIII_CMD_SNAPSHOT, type, frame & 0xFF, (frame >> 8) & 0xFF); delay(100); return r; }
-  inline int        reset(uCamIII_RESET_TYPE type = uCamIII_RESET_FULL, bool force = true)
+  inline long       takeSnapshot(uCamIII_SNAP_TYPE type = uCamIII_SNAP_JPEG, uint16_t frame = 0)
+                    { Log.trace(__FUNCTION__); long r = sendCmdWithAck(uCamIII_CMD_SNAPSHOT, type, frame & 0xFF, (frame >> 8) & 0xFF); delay(100); return r; }
+  inline long       reset(uCamIII_RESET_TYPE type = uCamIII_RESET_FULL, bool force = true)
                     { Log.trace(__FUNCTION__); return sendCmdWithAck(uCamIII_CMD_RESET, type, 0x00, 0x00, force ? uCamIII_RESET_FORCE : 0x00); }
-  inline int        setFrequency(uCamIII_FREQ frequency = uCamIII_50Hz)
+  inline long       setFrequency(uCamIII_FREQ frequency = uCamIII_50Hz)
                     { Log.trace(__FUNCTION__); return sendCmdWithAck(uCamIII_CMD_SET_FREQ, frequency); }
-  inline int        setCBE(uCamIII_CBE contrast = uCamIII_DEFAULT, uCamIII_CBE brightness = uCamIII_DEFAULT, uCamIII_CBE exposure = uCamIII_DEFAULT)
+  inline long       setCBE(uCamIII_CBE contrast = uCamIII_DEFAULT, uCamIII_CBE brightness = uCamIII_DEFAULT, uCamIII_CBE exposure = uCamIII_DEFAULT)
                     { Log.trace(__FUNCTION__); return sendCmdWithAck(uCamIII_CMD_SET_CBE, contrast, brightness, exposure); }
-  inline int        setIdleTime(uint8_t seconds = 15)
+  inline long       setIdleTime(uint8_t seconds = 15)
                     { Log.trace(__FUNCTION__); return sendCmdWithAck(uCamIII_CMD_SLEEP, seconds); }
-  inline int        setPackageSize(uint16_t size = 64)
+  inline long       setPackageSize(uint16_t size = 64)
                     { Log.trace(__FUNCTION__); return sendCmdWithAck(uCamIII_CMD_SET_PACKSIZE, 0x08, size & 0xFF, (size >> 8) & 0xFF) ? (_packageSize = size) : 0; }
   inline uint8_t    getLastError() 
                     { Log.trace(__FUNCTION__); return _lastError; }
@@ -135,14 +136,15 @@ protected:
   uint32_t          _timeout;
   uint32_t          _imageSize;
   uint16_t          _packageSize;
+  uint16_t          _packageNumber;
   uint8_t           _lastError;
   
   
 
-  int               sendCmd(uCamIII_CMD cmd, uint8_t p1 = 0, uint8_t p2 = 0, uint8_t p3 = 0, uint8_t p4 = 0);
-  int               sendCmdWithAck(uCamIII_CMD cmd, uint8_t p1 = 0, uint8_t p2 = 0, uint8_t p3 = 0, uint8_t p4 = 0);
-  int               expectPackage(uCamIII_CMD pkg, uint8_t option = uCamIII_DONT_CARE);
-  int               init();
+  long              sendCmd(uCamIII_CMD cmd, uint8_t p1 = 0, uint8_t p2 = 0, uint8_t p3 = 0, uint8_t p4 = 0);
+  long              sendCmdWithAck(uCamIII_CMD cmd, uint8_t p1 = 0, uint8_t p2 = 0, uint8_t p3 = 0, uint8_t p4 = 0);
+  long              expectPackage(uCamIII_CMD pkg, uint8_t option = uCamIII_DONT_CARE);
+  long              init();
   
 #if defined(PARTICLE)
   inline void       yield() 
@@ -157,12 +159,12 @@ protected:
 template <class serial>
 class uCamIII : public uCamIII_Base {
 public:
-  uCamIII(serial& camera, int resetPin = -1, uint32_t timeout = 1000) 
+  uCamIII(serial& camera, int resetPin = -1, uint32_t timeout = 500) 
   : uCamIII_Base(camera, resetPin, timeout), _cameraInterface(camera) { Log.trace(__FUNCTION__); } 
-  uCamIII(serial *camera, int resetPin = -1, uint32_t timeout = 1000) 
+  uCamIII(serial *camera, int resetPin = -1, uint32_t timeout = 500) 
   : uCamIII_Base(*camera, resetPin, timeout), _cameraInterface(*camera) { Log.trace(__FUNCTION__); } 
 
-  int init(int baudrate = 9600) { 
+  long init(int baudrate = 9600) { 
     Log.trace("uCAMIII: %s", __FUNCTION__);
     _cameraInterface.end();
     delay(100);

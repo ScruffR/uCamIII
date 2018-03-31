@@ -9,9 +9,11 @@ uCamIII<USARTSerial> ucam(Serial1, A0);
 
 //SerialLogHandler traceLog(LOG_LEVEL_TRACE);
 
+uint8_t jpgBuffer[512];
+uint8_t rawBuffer[32768];
 
-uint8_t buffer[512];
 int     imageSize = 0;
+int     imageType = uCamIII_SNAP_RAW;
 
 void setup() {
   Particle.function("snap", takeSnapshot);
@@ -22,12 +24,16 @@ void setup() {
 void loop() {
   if (!imageSize) return;
   Log.info("\r\nImageSize: %d", imageSize);
-  for (int received = 0, chunk = 0; (received < imageSize) && (chunk = ucam.getData(buffer, sizeof(buffer), callback)); received += chunk);
+  if (imageType == uCamIII_SNAP_JPEG)
+    for (int received = 0, chunk = 0; (received < imageSize) && (chunk = ucam.getJpegData(jpgBuffer, sizeof(jpgBuffer), callback)); received += chunk);
+  else 
+    ucam.getRawData(rawBuffer, imageSize, callback);
+
   digitalWrite(D7, LOW);
   imageSize = 0;
 }
 
-int takeSnapshot(String format) 
+long takeSnapshot(String format) 
 {
   uCamIII_PIC_TYPE     type = uCamIII_TYPE_SNAPSHOT; 
   uCamIII_SNAP_TYPE    snap = uCamIII_SNAP_RAW;
@@ -44,7 +50,7 @@ int takeSnapshot(String format)
     //type = uCamIII_TYPE_JPEG; // only for immediate pic like video stream
     snap = uCamIII_SNAP_JPEG;
     fmt  = uCamIII_COMP_JPEG;
-    res  = uCamIII_320x240;
+    res  = uCamIII_640x480;
   }
   else if (format.equalsIgnoreCase("RAW16"))
   {
@@ -56,7 +62,9 @@ int takeSnapshot(String format)
     if (!ucam.takeSnapshot(snap)) return -3;
 
   if (fmt == uCamIII_COMP_JPEG) 
-    if (!ucam.setPackageSize(sizeof(buffer))) return -4;
+    if (!ucam.setPackageSize(sizeof(jpgBuffer))) return -4;
+
+  imageType = snap;
   
   if (imageSize = ucam.getPicture(type))
     return imageSize;

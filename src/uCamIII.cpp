@@ -16,14 +16,14 @@
 //const char uCamIII_SET_CBE[]        = {0xAA, 0x14, 0x00, 0x00, 0x00, 0x00};				// contrast		brightness	exposure	0x00
 //const char uCamIII_SLEEP[]          = {0xAA, 0x15, 0x00, 0x00, 0x00, 0x00};				// timeout		0x00		0x00		0x00
 
-int uCamIII_Base::init() 
+long uCamIII_Base::init() 
 {
   Log.trace("uCAMIII_Base: %s", __FUNCTION__); 
   hardReset();
   return sync();
 }
 
-int uCamIII_Base::sync(int maxTry)
+long uCamIII_Base::sync(int maxTry)
 {
   Log.trace(__FUNCTION__); 
 
@@ -50,29 +50,30 @@ int uCamIII_Base::sync(int maxTry)
   return 0;
 }
 
-int uCamIII_Base::getPicture(uCamIII_PIC_TYPE type)
+long uCamIII_Base::getPicture(uCamIII_PIC_TYPE type)
 {
   Log.trace(__FUNCTION__); 
 
   if (sendCmdWithAck(uCamIII_CMD_GET_PICTURE, type))
+  {
+    _packageNumber = 0;    
     return (_imageSize = expectPackage(uCamIII_CMD_DATA, type) & 0x00FFFFFF);   // return image size
-
+  }
   return 0;
 }
 
 
-int uCamIII_Base::getData(uint8_t *buffer, int len, uCamIII_callback callback, int package)
+long uCamIII_Base::getJpegData(uint8_t *buffer, int len, uCamIII_callback callback, int package)
 {
   Log.trace(__FUNCTION__); 
 
-  static uint16_t pkgNo = 0;
   uint16_t        id    = 0;
   uint16_t        size  = 0;
   uint32_t        ms    = millis();
 
-  if (package >= 0) pkgNo = package;                    // request specific package
+  if (package >= 0) _packageNumber = package;           // request specific package
   
-  if (sendCmd(uCamIII_CMD_ACK, 0x00, 0x00, pkgNo & 0xFF, pkgNo >> 8))
+  if (sendCmd(uCamIII_CMD_ACK, 0x00, 0x00, _packageNumber & 0xFF, _packageNumber >> 8))
   {
     char info[4];
     char chk[2];
@@ -87,24 +88,43 @@ int uCamIII_Base::getData(uint8_t *buffer, int len, uCamIII_callback callback, i
     || _cameraStream.readBytes(chk, sizeof(chk)) != sizeof(chk)
     ) 
     {                                                   // if the expected data didn't arrive in time                                                   
-      ms = millis();                                    // flush the rest of RX buffer and
+      delay(100);                                       // allow for extra bytes to trickle in and then
+      ms = millis();                                    // flush the RX buffer and
       while(_cameraStream.read() >= 0 && millis() - ms < _timeout) yield();
       id = 0xF0F0;                                      // prepare for termination of request
     }
   }
 
   if (id * (_packageSize - 6) >= _imageSize || millis() - ms >= _timeout)
-  {
     sendCmd(uCamIII_CMD_ACK, 0x00, 0x00, 0xF0, 0xF0);   // report end of final data request to camera
-    pkgNo = 0;                                          // next time start with initial package again
-  }
   else
-    pkgNo = id;                                         // prepare to request next package
+    _packageNumber = id;                                // prepare to request next package
   
   if (id < 0xF0F0)
   {
     if (callback) callback(buffer, size, id);
     return size;    
+  }
+  
+  return 0;
+}
+
+long uCamIII_Base::getRawData(uint8_t *buffer, int len, uCamIII_callback callback)
+{
+  if (len >= _imageSize
+  && _imageSize == _cameraStream.readBytes((char*)buffer, _imageSize)
+  )
+  {                                                     // success -> report end of data request to camera
+    sendCmd(uCamIII_CMD_ACK, uCamIII_CMD_DATA, 0x00, 0x01, 0x00);    
+    if (callback) callback(buffer, _imageSize, 0);
+    return _imageSize;       
+  }
+  else                                                  // if the expected data didn't arrive in time
+  { 
+    uint32_t ms;                                                                                         
+    delay(100);                                         // allow for extra bytes to trickle in and then
+    ms = millis();                                      // flush the RX buffer
+    while(_cameraStream.read() >= 0 && millis() - ms < _timeout) yield();
   }
   
   return 0;
@@ -126,7 +146,7 @@ void uCamIII_Base::hardReset()
 
 // ----------------------------------- protected ----------------------------------------
 
-int uCamIII_Base::sendCmd(uCamIII_CMD cmd, uint8_t p1, uint8_t p2, uint8_t p3, uint8_t p4)
+long uCamIII_Base::sendCmd(uCamIII_CMD cmd, uint8_t p1, uint8_t p2, uint8_t p3, uint8_t p4)
 {
   Log.trace(__FUNCTION__); 
 
@@ -135,7 +155,7 @@ int uCamIII_Base::sendCmd(uCamIII_CMD cmd, uint8_t p1, uint8_t p2, uint8_t p3, u
   return _cameraStream.write(buf, 6);
 }
 
-int uCamIII_Base::sendCmdWithAck(uCamIII_CMD cmd, uint8_t p1, uint8_t p2, uint8_t p3, uint8_t p4) 
+long uCamIII_Base::sendCmdWithAck(uCamIII_CMD cmd, uint8_t p1, uint8_t p2, uint8_t p3, uint8_t p4) 
 {
   Log.trace(__FUNCTION__); 
 
@@ -143,7 +163,7 @@ int uCamIII_Base::sendCmdWithAck(uCamIII_CMD cmd, uint8_t p1, uint8_t p2, uint8_
   return expectPackage(uCamIII_CMD_ACK, cmd);
 }
 
-int uCamIII_Base::expectPackage(uCamIII_CMD pkg, uint8_t option)
+long uCamIII_Base::expectPackage(uCamIII_CMD pkg, uint8_t option)
 {
   Log.trace("%s(%02x,%02x)", __FUNCTION__, pkg, option); 
   uint8_t buf[6];
@@ -154,7 +174,7 @@ int uCamIII_Base::expectPackage(uCamIII_CMD pkg, uint8_t option)
     _lastError = 0;
     Log.trace("received: %02X %02X %02X %02X %02X %02X", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]);
     if (buf[1] == pkg && (buf[2] == option || option == uCamIII_DONT_CARE)) 
-      return buf[3] | buf[4] << 8 | buf[5] << 16 | 0x7F000000;
+      return buf[3] | buf[4] << 8 | buf[5] << 16 | 0x1000000;
     else if (buf[1] == uCamIII_CMD_NAK)
       _lastError = buf[4];
   }
