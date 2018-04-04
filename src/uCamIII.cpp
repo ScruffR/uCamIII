@@ -1,6 +1,27 @@
 /* *************************************************************************************
 
+Library for 4D Systems uCam-III TTL Camera 
+(also works with uCam-II - where features are supported)
+
+http://4dsystems.com.au/product/uCAM_III/
 http://www.4dsystems.com.au/productpages/uCAM-III/downloads/uCAM-III_datasheet_R_1_0.pdf
+
+Overview:
+The library implements most functions the uCamIII provides according to datasheet, 
+only baudrate selection is omitted due to the fact that up to 115200 the autodetection 
+works fine and higher baudrates available for the camera are usually not supported by 
+the microcontrollers using this library.
+
+It also supports hardware and software serial ports (e.g. `ParticleSoftSerial` on the 
+Particle side or `SoftwareSerial` and `NewSoftSerial` for Arduino) by use of 
+C++ templates.
+
+Like this:
+uCamIII<USARTSerial>        ucamHW(Serial1);
+uCamIII<ParticleSoftSerial> ucamSW(new ParticleSoftSerial(D0, D1));
+// or
+ParticleSoftSerial          pss(D0, D1);
+uCamIII<ParticleSoftSerial> ucamSW(pss);
 
 ----------------------------------------------------------------------------------------
 
@@ -48,7 +69,7 @@ long uCamIII_Base::sync(int maxTry)
   for (tries = 1; tries < maxTry; tries++)
   {
     _timeout = 5 + tries;                                       // start with 5ms timeout between syncs and increase by 1ms
-    if (count = sendCmdWithAck(uCamIII_CMD_SYNC)) break;
+    if ((count = sendCmdWithAck(uCamIII_CMD_SYNC))) break;
   }
   _timeout = ms;
   if (tries < maxTry)
@@ -126,7 +147,7 @@ long uCamIII_Base::getJpegData(uint8_t *buffer, int len, uCamIII_callback callba
 long uCamIII_Base::getRawData(uint8_t *buffer, int len, uCamIII_callback callback)
 {
   if (len >= _imageSize
-  && _imageSize == _cameraStream.readBytes((char*)buffer, _imageSize)
+  && _imageSize == (long)_cameraStream.readBytes((char*)buffer, _imageSize)
   )
   {                                                     // success -> report end of data request to camera
     sendCmd(uCamIII_CMD_ACK, uCamIII_CMD_DATA, 0x00, 0x01, 0x00);    
@@ -193,6 +214,6 @@ long uCamIII_Base::expectPackage(uCamIII_CMD pkg, uint8_t option)
       _lastError = buf[4];
   }
   
-  Log.warn("timeout: %02X %02X %02X %02X %02X %02X (%d)", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], _timeout);
+  Log.warn("timeout: %02X %02X %02X %02X %02X %02X (%lu)", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], _timeout);
   return 0;
 }

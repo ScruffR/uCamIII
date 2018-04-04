@@ -1,6 +1,27 @@
 /* *************************************************************************************
 
+Library for 4D Systems uCam-III TTL Camera 
+(also works with uCam-II - where features are supported)
+
+http://4dsystems.com.au/product/uCAM_III/
 http://www.4dsystems.com.au/productpages/uCAM-III/downloads/uCAM-III_datasheet_R_1_0.pdf
+
+Overview:
+The library implements most functions the uCamIII provides according to datasheet, 
+only baudrate selection is omitted due to the fact that up to 115200 the autodetection 
+works fine and higher baudrates available for the camera are usually not supported by 
+the microcontrollers using this library.
+
+It also supports hardware and software serial ports (e.g. `ParticleSoftSerial` on the 
+Particle side or `SoftwareSerial` and `NewSoftSerial` for Arduino) by use of 
+C++ templates.
+
+Like this:
+uCamIII<USARTSerial>        ucamHW(Serial1);
+uCamIII<ParticleSoftSerial> ucamSW(new ParticleSoftSerial(D0, D1));
+// or
+ParticleSoftSerial          pss(D0, D1);
+uCamIII<ParticleSoftSerial> ucamSW(pss);
 
 ----------------------------------------------------------------------------------------
 
@@ -28,13 +49,13 @@ SOFTWARE.
 
 ************************************************************************************* */
 
-#ifndef _4DS_UCAM_h_
-#define _4DS_UCAM_h_
+#ifndef _UCAMIII_h_
+#define _UCAMIII_h_
 
 #if defined(PARTICLE)
  #include <Particle.h>
  #if (SYSTEM_VERSION < 0x00060100)
-  #error "4DS_uCam library requires system target 0.6.1 or higher"
+  #error "uCamIII library requires system target 0.6.1 or higher"
  #endif
  //#include <ParticleSoftSerial.h>
 #else
@@ -62,9 +83,9 @@ enum uCamIII_CMD
 
 enum uCamIII_IMAGE_FORMAT 
 { uCamIII_RAW_8BIT          = 0x03
-, uCamIII_RAW_16BIT_R5G6B5  = 0x06
+, uCamIII_RAW_16BIT_RGB565  = 0x06
 , uCamIII_COMP_JPEG         = 0x07
-, uCamIII_RAW_16BIT_CRYCbY  = 0x08
+, uCamIII_RAW_16BIT_CRYCBY  = 0x08
 };
 
 enum uCamIII_RES
@@ -135,7 +156,7 @@ typedef int (*uCamIII_callback)(uint8_t* buffer, int len, int id);
 class uCamIII_Base {
 public:
   uCamIII_Base(Stream& cameraStream, int resetPin = -1, uint32_t timeout = 500) 
-  : _cameraStream(cameraStream), _resetPin(resetPin), _timeout(timeout), _imageSize(0), _packageSize(64), _lastError(0), _packageNumber(0) { } 
+  : _cameraStream(cameraStream), _resetPin(resetPin), _timeout(timeout), _imageSize(0), _packageSize(64), _packageNumber(0), _lastError(0) { } 
 
   long              sync(int maxTry = 60);
   long              getPicture(uCamIII_PIC_TYPE type = uCamIII_TYPE_JPEG);
@@ -144,9 +165,9 @@ public:
   void              hardReset();
   
   inline long       setImageFormat(uCamIII_IMAGE_FORMAT format = uCamIII_COMP_JPEG, uCamIII_RES resolution = uCamIII_640x480)
-                    { Log.trace(__FUNCTION__); return sendCmdWithAck(uCamIII_CMD_INIT, 0x00, format, uCamIII_COMP_JPEG ? 0x09 : resolution, uCamIII_COMP_JPEG ? resolution : 0x03); }
+                    { Log.trace(__FUNCTION__); return sendCmdWithAck(uCamIII_CMD_INIT, 0x00, format, resolution, resolution); }
   inline long       takeSnapshot(uCamIII_SNAP_TYPE type = uCamIII_SNAP_JPEG, uint16_t frame = 0)
-                    { Log.trace(__FUNCTION__); long r = sendCmdWithAck(uCamIII_CMD_SNAPSHOT, type, frame & 0xFF, (frame >> 8) & 0xFF); delay(100); return r; }
+                    { Log.trace(__FUNCTION__); long r = sendCmdWithAck(uCamIII_CMD_SNAPSHOT, type, frame & 0xFF, (frame >> 8) & 0xFF); delay(200); return r; }
   inline long       reset(uCamIII_RESET_TYPE type = uCamIII_RESET_FULL, bool force = true)
                     { Log.trace(__FUNCTION__); return sendCmdWithAck(uCamIII_CMD_RESET, type, 0x00, 0x00, force ? uCamIII_RESET_FORCE : 0x00); }
   inline long       setFrequency(uCamIII_FREQ frequency = uCamIII_50Hz)
@@ -163,14 +184,12 @@ public:
 protected:
   Stream&           _cameraStream;
   int               _resetPin;
-  uint32_t          _timeout;
-  uint32_t          _imageSize;
-  uint16_t          _packageSize;
-  uint16_t          _packageNumber;
+  unsigned long     _timeout;
+  long              _imageSize;
+  short             _packageSize;
+  unsigned short    _packageNumber;
   uint8_t           _lastError;
   
-  
-
   long              sendCmd(uCamIII_CMD cmd, uint8_t p1 = 0, uint8_t p2 = 0, uint8_t p3 = 0, uint8_t p4 = 0);
   long              sendCmdWithAck(uCamIII_CMD cmd, uint8_t p1 = 0, uint8_t p2 = 0, uint8_t p3 = 0, uint8_t p4 = 0);
   long              expectPackage(uCamIII_CMD pkg, uint8_t option = uCamIII_DONT_CARE);
