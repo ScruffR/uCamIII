@@ -2,6 +2,7 @@
 (also works with uCam-II - where features are supported)
 
 http://4dsystems.com.au/product/uCAM_III/
+
 http://www.4dsystems.com.au/productpages/uCAM-III/downloads/uCAM-III_datasheet_R_1_0.pdf
 
 ## Overview:
@@ -35,5 +36,5 @@ For non-JPG formats a BMP header is prepended to allow use in <img> tag.
 
 The server address can be retrieved via Particle.variale("IP")
 
-[WebView](https://github.com/ScruffR/uCamIII/img/uCamTest.png)
+![WebView](https://github.com/ScruffR/uCamIII/img/uCamTest.png)
 
