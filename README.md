@@ -1,8 +1,8 @@
 # Library for 4D Systems uCam-III TTL Camera 
 (also works with uCam-II - where features are supported)
 
-http://4dsystems.com.au/product/uCAM_III/
-http://www.4dsystems.com.au/productpages/uCAM-III/downloads/uCAM-III_datasheet_R_1_0.pdf
+ - http://4dsystems.com.au/product/uCAM_III/
+ - http://www.4dsystems.com.au/productpages/uCAM-III/downloads/uCAM-III_datasheet_R_1_0.pdf
 
 ## Overview:
 The library implements most functions the uCamIII provides according to datasheet, 
