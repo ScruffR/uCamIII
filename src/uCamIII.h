@@ -167,7 +167,7 @@ public:
   inline long       setImageFormat(uCamIII_IMAGE_FORMAT format = uCamIII_COMP_JPEG, uCamIII_RES resolution = uCamIII_640x480)
                     { Log.trace(__FUNCTION__); return sendCmdWithAck(uCamIII_CMD_INIT, 0x00, format, resolution, resolution); }
   inline long       takeSnapshot(uCamIII_SNAP_TYPE type = uCamIII_SNAP_JPEG, uint16_t frame = 0)
-                    { Log.trace(__FUNCTION__); long r = sendCmdWithAck(uCamIII_CMD_SNAPSHOT, type, frame & 0xFF, (frame >> 8) & 0xFF); delay(200); return r; }
+                    { Log.trace(__FUNCTION__); long r = sendCmdWithAck(uCamIII_CMD_SNAPSHOT, type, frame & 0xFF, (frame >> 8) & 0xFF); delay(_timeout); return r; }
   inline long       reset(uCamIII_RESET_TYPE type = uCamIII_RESET_FULL, bool force = true)
                     { Log.trace(__FUNCTION__); return sendCmdWithAck(uCamIII_CMD_RESET, type, 0x00, 0x00, force ? uCamIII_RESET_FORCE : 0x00); }
   inline long       setFrequency(uCamIII_FREQ frequency = uCamIII_50Hz)

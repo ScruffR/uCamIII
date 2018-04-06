@@ -69,9 +69,12 @@ SOFTWARE.
 //SerialLogHandler traceLog(LOG_LEVEL_TRACE);
 
 #if Wiring_WiFi
-#define COLOR_TYPE "ColorType"
-#define RAW_RES    "RawResolution"
-#define JPG_RES    "JPEGResolution"
+#define COLOR_TYPE "CT"
+#define RAW_RES    "RR"
+#define JPG_RES    "JR"
+#define CONTRAST   "cbeC"
+#define BRIGHTNESS "cbeB"
+#define EXPOSURE   "cbeE"
 
 P(Page_start) = "<html><head><meta charset='utf-8'/><title>uCamIII Demo</title></head><body>\n";
 P(camBody) = 
@@ -88,7 +91,7 @@ P(camBody) =
 "</select>"
 "</td>"
 "<td id='raw_res'>"
-"<label>Raw Resolution:</label>"
+"<label>Raw Resolution</label>"
 "<select id='" RAW_RES "' name='" RAW_RES "'>"
 "<option value='03'>160x120</option>"
 "<option value='09'>128x128</option>"
@@ -97,7 +100,7 @@ P(camBody) =
 "</select>"
 "</td>"
 "<td id='jpeg_res' visible='false'>"
-"<label>JPEG Resolution:</label>"
+"<label>JPEG Resolution</label>"
 "<select id='" JPG_RES "' name='" JPG_RES "'>"
 "<option value='07'>640x480</option>"
 "<option value='05'>320x240</option>"
@@ -105,7 +108,39 @@ P(camBody) =
 "</select>"
 "</td>"
 "<td>"
-"<input id='click' type='submit' value='Click!' />"
+"<input id='click' type='submit' value='Click!' rowspan='2' style='width:100% height:100%' />"
+"</td>"
+"</tr>"
+"<tr>"
+"<td>"
+"<label>Contrast</label>"
+"<select id='" CONTRAST "' name='" CONTRAST "'>"
+"<option value='00'>Min</option>"
+"<option value='01'>Low</option>"
+"<option value='02' selected='true'>Default</option>"
+"<option value='03'>High</option>"
+"<option value='04'>Max</option>"
+"</select>"
+"</td>"
+"<td id='raw_res'>"
+"<label>Brightness</label>"
+"<select id='" BRIGHTNESS "' name='" BRIGHTNESS "'>"
+"<option value='00'>Min</option>"
+"<option value='01'>Low</option>"
+"<option value='02' selected='true'>Default</option>"
+"<option value='03'>High</option>"
+"<option value='04'>Max</option>"
+"</select>"
+"</td>"
+"<td id='jpeg_res' visible='false'>"
+"<label>Exposure</label>"
+"<select id='" EXPOSURE "' name='" EXPOSURE "'>"
+"<option value='00'>-2</option>"
+"<option value='01'>-1</option>"
+"<option value='02' selected='true'>0</option>"
+"<option value='03'>+1</option>"
+"<option value='04'>+2</option>"
+"</select>"
 "</td>"
 "</tr>"
 "</table>"
@@ -119,10 +154,23 @@ P(camBody) =
 "<h4>Chrome doesn't cope well with raw images at all, better use other browser</h4>"
 "<br/>To view with correct colors use an image viewer that supports"
 "<br/>RGB565 or CrYCbY/UYVY encoding (e.g. GIMP)"
+"<br/>"
+"<a href='http://www.4dsystems.com.au/productpages/uCAM-III/downloads/uCAM-III_datasheet_R_1_0.pdf'>uCamIII datasheet</a>"
 "<br/><br/>"
 ;
 P(Page_end) = "</body></html>";
-P(Parsed_tail_begin) = "URL parameters:<br>\n";
+
+P(script) = 
+"<script>" 
+"document.getElementById('" COLOR_TYPE "').value='%02d';"
+"document.getElementById('" RAW_RES "').value='%02d';"
+"document.getElementById('" JPG_RES "').value='%02d';"
+"document.getElementById('" CONTRAST "').value='%02d';"
+"document.getElementById('" BRIGHTNESS "').value='%02d';"
+"document.getElementById('" EXPOSURE "').value='%02d';"
+"</script>"
+;
+
 
 /* This creates an instance of the webserver.  By specifying a prefix
  * of "", all pages will be at the root of the server. */
@@ -140,6 +188,9 @@ void sendBmpHeader(WebServer &server, int width, int height, int bits, int encod
 long takePicture(uCamIII_SNAP_TYPE snap    = uCamIII_SNAP_RAW, 
                  uCamIII_IMAGE_FORMAT fmt  = uCamIII_RAW_8BIT, 
                  uCamIII_RES res           = uCamIII_80x60, 
+                 uCamIII_CBE contrast      = uCamIII_DEFAULT,
+                 uCamIII_CBE brightness    = uCamIII_DEFAULT,
+                 uCamIII_CBE exposure      = uCamIII_DEFAULT,
                  uCamIII_callback callback = NULL);
 
 uCamIII<USARTSerial> ucam(Serial1, A0);                             // use HW Serial1 and A0 as reset pin for uCamIII
@@ -186,20 +237,25 @@ int takeSnapshot(String format)
   Log.trace(__FUNCTION__); 
 
   if (format.equalsIgnoreCase("JPG") || format.equalsIgnoreCase("JPEG"))
-    return takePicture(uCamIII_SNAP_JPEG, uCamIII_COMP_JPEG, uCamIII_640x480, callback);
+    return takePicture(uCamIII_SNAP_JPEG, uCamIII_COMP_JPEG, uCamIII_640x480, 
+                       uCamIII_DEFAULT, uCamIII_DEFAULT, uCamIII_DEFAULT, callback);
   else if (format.equalsIgnoreCase("RGB16"))
-    return takePicture(uCamIII_SNAP_RAW, uCamIII_RAW_16BIT_RGB565, uCamIII_160x120, callback);
+    return takePicture(uCamIII_SNAP_RAW, uCamIII_RAW_16BIT_RGB565, uCamIII_160x120, 
+                       uCamIII_DEFAULT, uCamIII_DEFAULT, uCamIII_DEFAULT, callback);
   else if (format.equalsIgnoreCase("UYVY16") || format.equalsIgnoreCase("CrYCbY16"))
-    return takePicture(uCamIII_SNAP_RAW, uCamIII_RAW_16BIT_CRYCBY, uCamIII_160x120, callback);
+    return takePicture(uCamIII_SNAP_RAW, uCamIII_RAW_16BIT_CRYCBY, uCamIII_160x120, 
+                       uCamIII_DEFAULT, uCamIII_DEFAULT, uCamIII_DEFAULT, callback);
   else // default to "GRAY8"
-    return takePicture(uCamIII_SNAP_RAW, uCamIII_RAW_8BIT, uCamIII_160x120, callback);
+    return takePicture(uCamIII_SNAP_RAW, uCamIII_RAW_8BIT, uCamIII_160x120, 
+                       uCamIII_DEFAULT, uCamIII_DEFAULT, uCamIII_DEFAULT, callback);
 }
 
-long takePicture(uCamIII_SNAP_TYPE snap, uCamIII_IMAGE_FORMAT fmt, uCamIII_RES res, uCamIII_callback callback)
+long takePicture(uCamIII_SNAP_TYPE snap, uCamIII_IMAGE_FORMAT fmt, uCamIII_RES res, 
+                 uCamIII_CBE contrast, uCamIII_CBE brightness, uCamIII_CBE exposure,
+                 uCamIII_callback callback)
 {
   uCamIII_PIC_TYPE type = uCamIII_TYPE_SNAPSHOT;    // default for the demo 
                                                     // alternative: _TYPE_RAW & _TYPE_JPEG
-  
   digitalWrite(D7, HIGH);
 
   ucam.hardReset();
@@ -207,6 +263,8 @@ long takePicture(uCamIII_SNAP_TYPE snap, uCamIII_IMAGE_FORMAT fmt, uCamIII_RES r
   if (!ucam.sync()) return -1;
   
   if (!ucam.setImageFormat(fmt, res)) return -2;
+  
+  ucam.setCBE(contrast, brightness, exposure);
 
   if (type == uCamIII_TYPE_SNAPSHOT)
     if (!ucam.takeSnapshot(snap)) return -3;
@@ -296,7 +354,10 @@ void defaultCmd(WebServer &server, WebServer::ConnectionType type, char *url_tai
   int res    = -1;  // uCamIII_RES          
   int rawRes = -1;
   int jpgRes = -1;
-
+  int contr  = 0;
+  int bright = 0;
+  int expose = 0;
+  
   server.httpSuccess();
 
   if (type == WebServer::HEAD)
@@ -310,8 +371,8 @@ void defaultCmd(WebServer &server, WebServer::ConnectionType type, char *url_tai
     URLPARAM_RESULT rc;
     char name[NAMELEN];
     char value[VALUELEN];
-
-    server.printP(Parsed_tail_begin);
+    char strScript[strlen((const char*)script)];
+    
     while (strlen(url_tail))
     {
       rc = server.nextURLparam(&url_tail, name, NAMELEN, value, VALUELEN);
@@ -326,17 +387,24 @@ void defaultCmd(WebServer &server, WebServer::ConnectionType type, char *url_tai
           rawRes = atoi(value);           
         else if (!strcmp(name, JPG_RES))
           jpgRes = atoi(value);           
-
-        server.printf("%s = '%s' ", name, value);
+        else if (!strcmp(name, CONTRAST))
+          contr = atoi(value);           
+        else if (!strcmp(name, BRIGHTNESS))
+          bright = atoi(value);           
+        else if (!strcmp(name, EXPOSURE))
+          expose = atoi(value);           
       }
     }
+    snprintf(strScript, sizeof(strScript), (const char*)script, fmt, rawRes, jpgRes, contr, bright, expose);
+    server.print(strScript);
   }
 
   server.printP(Page_end);
 
   res = (fmt == uCamIII_COMP_JPEG) ? jpgRes : rawRes;
   if (snap >= 0 && fmt > 0 && res > 0)
-    takePicture((uCamIII_SNAP_TYPE)snap, (uCamIII_IMAGE_FORMAT)fmt, (uCamIII_RES)res);
+    takePicture((uCamIII_SNAP_TYPE)snap, (uCamIII_IMAGE_FORMAT)fmt, (uCamIII_RES)res, 
+                (uCamIII_CBE)contr, (uCamIII_CBE)bright, (uCamIII_CBE)expose);
 }
 
 void imageCmd(WebServer &server, WebServer::ConnectionType type, char *url_tail, bool tail_complete)
