@@ -24,10 +24,15 @@ uCamIII<ParticleSoftSerial> ucamSW(pss);
 ```
 
 ## Example Firmware uCamTest:
+## Example Firmware uCamTest:
 This sketch demonstrates how to use the uCamIII library.
 It will provide a `Particle.function("snap")` that can be triggered with parameters
 `GRAY8` (default for wrong parameters too), `RGB16`, `UYVY16` and `JPG` to take a pic and 
-send it via `Serial` where it can be dumped into a file.
+send it via `Serial` or `TCP` (provided via `Particle.function("setTarget")`) where it 
+can be dumped into a file.
+For the TCP data sink you need to be running a server like the provided ['imageReceiver.js'](/server/imageReceiver.js)
+and inform the device of the IP and port for the server. This is done via
+`Particle.function("setServer")` in the form `###.###.###.###:port`.
 
 For WiFi devices it also provides a Webserver which lets you select image format and
 resolution and displays the image. 

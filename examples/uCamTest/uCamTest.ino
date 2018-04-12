@@ -29,7 +29,11 @@ uCamIII<ParticleSoftSerial> ucamSW(pss);
 This sketch demonstrates how to use the uCamIII library.
 It will provide a `Particle.function("snap")` that can be triggered with parameters
 `GRAY8` (default for wrong parameters too), `RGB16`, `UYVY16` and `JPG` to take a pic and 
-send it via `Serial` where it can be dumped into a file.
+send it via `Serial` or `TCP` (provided via `Particle.function("setTarget")`) where it 
+can be dumped into a file.
+For the TCP data sink you need to be running a server like the provided 'imageReceiver.js'
+and inform the device of the IP and port for the server. This is done via
+`Particle.function("setServer")` in the form `###.###.###.###:port`.
 
 For WiFi devices it also provides a Webserver which lets you select image format and
 resolution and displays the image. 
@@ -65,151 +69,59 @@ SOFTWARE.
 
 #include "uCamIII.h"
 #include "WebServer.h"
+#include "WebPage.h"
+#include "TCPClientX.h"
 
+// uncomment for debugging
 //SerialLogHandler traceLog(LOG_LEVEL_TRACE);
 
-#if Wiring_WiFi
-#define COLOR_TYPE "CT"
-#define RAW_RES    "RR"
-#define JPG_RES    "JR"
-#define CONTRAST   "cbeC"
-#define BRIGHTNESS "cbeB"
-#define EXPOSURE   "cbeE"
+long prepareCam(uCamIII_SNAP_TYPE snap    = uCamIII_SNAP_RAW, 
+                uCamIII_IMAGE_FORMAT fmt  = uCamIII_RAW_8BIT, 
+                uCamIII_RES res           = uCamIII_80x60, 
+                uCamIII_CBE contrast      = uCamIII_DEFAULT,
+                uCamIII_CBE brightness    = uCamIII_DEFAULT,
+                uCamIII_CBE exposure      = uCamIII_DEFAULT,
+                uCamIII_callback callback = NULL);
 
-P(Page_start) = "<html><head><meta charset='utf-8'/><title>uCamIII Demo</title></head><body>\n";
-P(camBody) = 
-"<form id='settings' onclick='click'>"
-"<table style='width: 100%;'>"
-"<tr>"
-"<td>"
-"<label>Color Type</label>"
-"<select id='" COLOR_TYPE "' name='" COLOR_TYPE "'>"
-"<option value='07'>JPEG</option>"
-"<option value='03'>RawGrascale8bit</option>"
-"<option value='06'>RawColor16bitRGB565</option>"
-"<option value='08'>RawColor16bitCrYCbY</option>"
-"</select>"
-"</td>"
-"<td id='raw_res'>"
-"<label>Raw Resolution</label>"
-"<select id='" RAW_RES "' name='" RAW_RES "'>"
-"<option value='03'>160x120</option>"
-"<option value='09'>128x128</option>"
-"<option value='08'>128x96</option>"
-"<option value='01'>80x60</option>"
-"</select>"
-"</td>"
-"<td id='jpeg_res' visible='false'>"
-"<label>JPEG Resolution</label>"
-"<select id='" JPG_RES "' name='" JPG_RES "'>"
-"<option value='07'>640x480</option>"
-"<option value='05'>320x240</option>"
-"<option value='03'>160x120</option>"
-"</select>"
-"</td>"
-"<td>"
-"<input id='click' type='submit' value='Click!' rowspan='2' style='width:100% height:100%' />"
-"</td>"
-"</tr>"
-"<tr>"
-"<td>"
-"<label>Contrast</label>"
-"<select id='" CONTRAST "' name='" CONTRAST "'>"
-"<option value='00'>Min</option>"
-"<option value='01'>Low</option>"
-"<option value='02' selected='true'>Default</option>"
-"<option value='03'>High</option>"
-"<option value='04'>Max</option>"
-"</select>"
-"</td>"
-"<td id='raw_res'>"
-"<label>Brightness</label>"
-"<select id='" BRIGHTNESS "' name='" BRIGHTNESS "'>"
-"<option value='00'>Min</option>"
-"<option value='01'>Low</option>"
-"<option value='02' selected='true'>Default</option>"
-"<option value='03'>High</option>"
-"<option value='04'>Max</option>"
-"</select>"
-"</td>"
-"<td id='jpeg_res' visible='false'>"
-"<label>Exposure</label>"
-"<select id='" EXPOSURE "' name='" EXPOSURE "'>"
-"<option value='00'>-2</option>"
-"<option value='01'>-1</option>"
-"<option value='02' selected='true'>0</option>"
-"<option value='03'>+1</option>"
-"<option value='04'>+2</option>"
-"</select>"
-"</td>"
-"</tr>"
-"</table>"
-"</form>"
-"<br/>"
-"<img src='image.dat' />"
-"<br/>"
-"<a href='image.dat'>download image</a>"
-"<br/>"
-"<h3><font color='red'>16bit raw images will be displayed with distorted colors</font></h3>"
-"<h4>Chrome doesn't cope well with raw images at all, better use other browser</h4>"
-"<br/>To view with correct colors use an image viewer that supports"
-"<br/>RGB565 or CrYCbY/UYVY encoding (e.g. GIMP)"
-"<br/>"
-"<a href='http://www.4dsystems.com.au/productpages/uCAM-III/downloads/uCAM-III_datasheet_R_1_0.pdf'>uCamIII datasheet</a>"
-"<br/><br/>"
-;
-P(Page_end) = "</body></html>";
-
-P(script) = 
-"<script>" 
-"document.getElementById('" COLOR_TYPE "').value='%02d';"
-"document.getElementById('" RAW_RES "').value='%02d';"
-"document.getElementById('" JPG_RES "').value='%02d';"
-"document.getElementById('" CONTRAST "').value='%02d';"
-"document.getElementById('" BRIGHTNESS "').value='%02d';"
-"document.getElementById('" EXPOSURE "').value='%02d';"
-"</script>"
-;
-
-
-/* This creates an instance of the webserver.  By specifying a prefix
- * of "", all pages will be at the root of the server. */
-const char PREFIX[] = "";
-const int  NAMELEN  = 32;
-const int  VALUELEN = 32;
-
-WebServer webserver(PREFIX, 80);
-
-void defaultCmd(WebServer &server, WebServer::ConnectionType type, char *url_tail, bool tail_complete);
-void imageCmd(WebServer &server, WebServer::ConnectionType type, char *url_tail, bool tail_complete);
-void sendBmpHeader(WebServer &server, int width, int height, int bits, int encoding = 0, int padding = 0);  
-#endif
-
-long takePicture(uCamIII_SNAP_TYPE snap    = uCamIII_SNAP_RAW, 
-                 uCamIII_IMAGE_FORMAT fmt  = uCamIII_RAW_8BIT, 
-                 uCamIII_RES res           = uCamIII_80x60, 
-                 uCamIII_CBE contrast      = uCamIII_DEFAULT,
-                 uCamIII_CBE brightness    = uCamIII_DEFAULT,
-                 uCamIII_CBE exposure      = uCamIII_DEFAULT,
-                 uCamIII_callback callback = NULL);
-
-uCamIII<USARTSerial> ucam(Serial1, A0);                             // use HW Serial1 and A0 as reset pin for uCamIII
+uCamIII<USARTSerial> ucam(Serial1, A0, 500);                        // use HW Serial1 and A0 as reset pin for uCamIII
 // or
 // uCamIII<ParticleSoftSerial> ucam(new ParticleSoftSerial(D0, D1));
 // or
 // ParticleSoftSerial pss(D0, D1);
 // uCamIII<ParticleSoftSerial> ucam(pss);
 
-uint8_t imageBuffer[40960];                                         // max raw image 160x128x2byte
-int     imageSize    = 0;
-int     imageType    = uCamIII_SNAP_RAW;
-int     imageWidth   = 0;
-int     imageHeight  = 0;
-int     imagePxDepth = 0;
-char    lIP[16];
+uint8_t     imageBuffer[160*120*2 + 134];                           // max raw image 160x120x2byte + max BMP header size
+int         imageSize     = 0;
+int         imageType     = uCamIII_TYPE_SNAPSHOT;                  // default for the demo 
+                                                                    // alternative: _TYPE_RAW & _TYPE_JPEG
+int         imageSnapType = uCamIII_SNAP_RAW;
+int         imageWidth    = 0;
+int         imageHeight   = 0;
+int         imagePxDepth  = 0;
+int         imageTime     = 0;
+char        lIP[16];
+
+
+IPAddress   serverAddr;
+int         serverPort;
+char        nonce[34];
+#if Wiring_WiFi
+  TCPClientX client(1024, 100);
+#elif Wiring_Cellular
+  TCPClientX client( 512, 100);
+#endif
+uCamIII_callback snapTarget = callbackSerial;
+
+int         sendImageTCP(const uint8_t *buf, int len, int chunkSize = 512, uint32_t flushTime = 100);
+int         bmpHeader(uint8_t *buf, int len, int width, int height, int bits, int encoding = 0, int padding = 0);
 
 void setup() {
+  Time.zone(+2.0);
+    
+  Particle.function("setServer", devicesHandler);
+  Particle.function("setTarget", setSnapshotTarget);
   Particle.function("snap", takeSnapshot);
+
   pinMode(D7, OUTPUT);
   ucam.init(115200);
 
@@ -225,6 +137,8 @@ void setup() {
 }
 
 void loop() {
+  static uint32_t msSend = 0;    
+
 #if Wiring_WiFi
   char buff[64];
   int len = 64;
@@ -232,45 +146,113 @@ void loop() {
 #endif
 }
 
+int devicesHandler(String data) 
+{
+  Log.trace(__FUNCTION__); 
+
+  int addr[4];
+  Log.trace("devicesHandler data=%s", data.c_str());
+
+                                                                                        // nonce optional
+  if (sscanf(data, "%u.%u.%u.%u:%u,%32s", &addr[0], &addr[1], &addr[2], &addr[3], &serverPort, nonce) >= 5) {
+	serverAddr = IPAddress(addr[0], addr[1], addr[2], addr[3]);
+	Log.info("serverAddr=%s serverPort=%u nonce=%s", (const char*)serverAddr.toString(), serverPort, nonce);
+	return serverPort;
+  }
+  return 0;
+}
+
+int setSnapshotTarget(String target)
+{
+  if (target.equalsIgnoreCase("tcp"))
+  {
+    snapTarget = callbackTCP;
+    return 1;
+  }
+  else 
+    snapTarget = callbackSerial;                            // default to Serial
+    
+  return 0;
+}
+
 int takeSnapshot(String format) 
 {
   Log.trace(__FUNCTION__); 
 
+  int retVal;
+  
   if (format.equalsIgnoreCase("JPG") || format.equalsIgnoreCase("JPEG"))
-    return takePicture(uCamIII_SNAP_JPEG, uCamIII_COMP_JPEG, uCamIII_640x480, 
-                       uCamIII_DEFAULT, uCamIII_DEFAULT, uCamIII_DEFAULT, callback);
+    retVal = prepareCam(uCamIII_SNAP_JPEG, uCamIII_COMP_JPEG, uCamIII_640x480, 
+                       uCamIII_DEFAULT, uCamIII_DEFAULT, uCamIII_DEFAULT, snapTarget);
   else if (format.equalsIgnoreCase("RGB16"))
-    return takePicture(uCamIII_SNAP_RAW, uCamIII_RAW_16BIT_RGB565, uCamIII_160x120, 
-                       uCamIII_DEFAULT, uCamIII_DEFAULT, uCamIII_DEFAULT, callback);
+    retVal = prepareCam(uCamIII_SNAP_RAW, uCamIII_RAW_16BIT_RGB565, uCamIII_160x120, 
+                       uCamIII_DEFAULT, uCamIII_DEFAULT, uCamIII_DEFAULT, snapTarget);
   else if (format.equalsIgnoreCase("UYVY16") || format.equalsIgnoreCase("CrYCbY16"))
-    return takePicture(uCamIII_SNAP_RAW, uCamIII_RAW_16BIT_CRYCBY, uCamIII_160x120, 
-                       uCamIII_DEFAULT, uCamIII_DEFAULT, uCamIII_DEFAULT, callback);
+    retVal = prepareCam(uCamIII_SNAP_RAW, uCamIII_RAW_16BIT_CRYCBY, uCamIII_160x120, 
+                       uCamIII_DEFAULT, uCamIII_DEFAULT, uCamIII_DEFAULT, snapTarget);
   else // default to "GRAY8"
-    return takePicture(uCamIII_SNAP_RAW, uCamIII_RAW_8BIT, uCamIII_160x120, 
-                       uCamIII_DEFAULT, uCamIII_DEFAULT, uCamIII_DEFAULT, callback);
+    retVal = prepareCam(uCamIII_SNAP_RAW, uCamIII_RAW_8BIT, uCamIII_160x120, 
+                       uCamIII_DEFAULT, uCamIII_DEFAULT, uCamIII_DEFAULT, snapTarget);
+
+  if (retVal <= 0) return retVal;
+  
+  if (retVal = imageSize = ucam.getPicture((uCamIII_PIC_TYPE)imageType))
+  {
+    Log.info("\r\nImageSize: %d", imageSize);
+
+    if (imageType == uCamIII_SNAP_JPEG)
+      for (int received = 0, chunk = 0; (received < imageSize) && (chunk = ucam.getJpegData(&imageBuffer[constrain(received, 0, sizeof(imageBuffer)-512)], 512, snapTarget)); received += chunk);
+    else if (imageSize <= sizeof(imageBuffer)) 
+    {
+      int offset = bmpHeader(imageBuffer, sizeof(imageBuffer), imageWidth, imageHeight, imagePxDepth);
+      retVal     = ucam.getRawData(&imageBuffer[offset], imageSize, NULL);
+
+      if (imagePxDepth == 16) 
+      {
+        for (int i = offset; i < imageSize + offset; i += 2)    // raw image comes big-endian and upside down from cam,
+        {                                                       // this block corrects endianness
+          uint8_t dmy = imageBuffer[i];
+          imageBuffer[i] = imageBuffer[i+1];
+          imageBuffer[i+1] = dmy;
+        }
+      }
+      snapTarget(imageBuffer, imageSize + offset, 0);
+    }
+
+    if (client.connected())                                     // if the TCP client would still be connected
+      client.stop();                                            // stop the connection
+
+    digitalWrite(D7, LOW);
+
+    return retVal;
+  }
+
+  return 0;
 }
 
-long takePicture(uCamIII_SNAP_TYPE snap, uCamIII_IMAGE_FORMAT fmt, uCamIII_RES res, 
+long prepareCam(uCamIII_SNAP_TYPE snap, uCamIII_IMAGE_FORMAT fmt, uCamIII_RES res, 
                  uCamIII_CBE contrast, uCamIII_CBE brightness, uCamIII_CBE exposure,
                  uCamIII_callback callback)
 {
-  uCamIII_PIC_TYPE type = uCamIII_TYPE_SNAPSHOT;    // default for the demo 
-                                                    // alternative: _TYPE_RAW & _TYPE_JPEG
+  int retVal = 0;
+  
   digitalWrite(D7, HIGH);
 
   ucam.hardReset();
-  
-  if (!ucam.sync()) return -1;
-  
-  if (!ucam.setImageFormat(fmt, res)) return -2;
-  
-  ucam.setCBE(contrast, brightness, exposure);
 
-  if (type == uCamIII_TYPE_SNAPSHOT)
-    if (!ucam.takeSnapshot(snap)) return -3;
+  if (!(retVal = ucam.sync())) return -1;
+  
+  if (!(retVal = ucam.setImageFormat(fmt, res))) return -2;
+  
+  retVal = ucam.setCBE(contrast, brightness, exposure);
+
+  if (imageType == uCamIII_TYPE_SNAPSHOT)
+    if (!(retVal = ucam.takeSnapshot(snap))) return -3;
+
+  imageTime = Time.now();
 
   if (fmt == uCamIII_COMP_JPEG) 
-    if (!ucam.setPackageSize(512)) return -4;
+    if (!(retVal = ucam.setPackageSize(512))) return -4;
 
   // if we made it to here, we can set the global image variables accordingly 
   imageType = snap;             
@@ -322,29 +304,38 @@ long takePicture(uCamIII_SNAP_TYPE snap, uCamIII_IMAGE_FORMAT fmt, uCamIII_RES r
       break;
   }
   
-  if (imageSize = ucam.getPicture(type)) 
-  {
-    Log.info("\r\nImageSize: %d", imageSize);
-    if (imageType == uCamIII_SNAP_JPEG)
-      for (int received = 0, chunk = 0; (received < imageSize) && (chunk = ucam.getJpegData(&imageBuffer[received], 512, callback)); received += chunk);
-    else 
-      ucam.getRawData(imageBuffer, imageSize, callback);
-      
-    digitalWrite(D7, LOW);
-    return imageSize;
-  }
-
-  return 0;
+  return retVal;
 }
 
-int callback(uint8_t *buf, int len, int id)
+int callbackSerial(uint8_t *buf, int len, int id)
 {
-  Log.info("Package %d (%d Byte)", id, len);
+  Log.info("Package %d (%d Byte) -> Serial", id, len);
+  
   return Serial.write(buf, len);
 }
 
+int callbackTCP(uint8_t *buf, int len, int id)
+{
+  Log.info("Package %d (%d Byte) -> TCP %s:%d", id, len, (const char*)serverAddr.toString(), serverPort);
 
-#if Wiring_WiFi
+  if (serverPort)
+  {
+    if (!client.connected()) 
+      client.connect(serverAddr, serverPort);
+    return client.write(buf, len);
+  }
+  
+  return 0;
+}
+
+// ------------------------------------------------------------------------------------------------------------------------
+#if Wiring_WiFi // ---------------------------  only available for WiFi devices -------------------------------------------
+
+int callbackWebServer(uint8_t *buf, int len, int id) 
+{
+  return webserver.write(buf, len);
+}
+
 void defaultCmd(WebServer &server, WebServer::ConnectionType type, char *url_tail, bool tail_complete)
 {
   Log.trace(__FUNCTION__); 
@@ -357,70 +348,110 @@ void defaultCmd(WebServer &server, WebServer::ConnectionType type, char *url_tai
   int contr  = 0;
   int bright = 0;
   int expose = 0;
-  
+
+  char strScript[strlen((const char*)script)+16] = "";
+  int  tzOffset  = Time.local() - Time.now();
+  int  tzHours   = tzOffset / 3600; 
+  int  tzMinutes = abs(tzOffset / 60) % 60;
+
   server.httpSuccess();
 
   if (type == WebServer::HEAD)
     return;
 
-  server.printP(Page_start);
-  server.printP(camBody);
-
-  if (strlen(url_tail))
+  if (strlen(url_tail)) 
   {
+    while (strlen(url_tail))
+    {
     URLPARAM_RESULT rc;
     char name[NAMELEN];
     char value[VALUELEN];
-    char strScript[strlen((const char*)script)];
     
-    while (strlen(url_tail))
+    rc = server.nextURLparam(&url_tail, name, NAMELEN, value, VALUELEN);
+    if (rc != URLPARAM_EOS)
     {
-      rc = server.nextURLparam(&url_tail, name, NAMELEN, value, VALUELEN);
-      if (rc != URLPARAM_EOS)
+      if (!strcmp(name, COLOR_TYPE))
       {
-        if (!strcmp(name, COLOR_TYPE))
-        {
-          fmt = atoi(value);
-          snap = (fmt == uCamIII_COMP_JPEG) ? uCamIII_SNAP_JPEG : uCamIII_SNAP_RAW;
-        }
-        else if (!strcmp(name, RAW_RES))
-          rawRes = atoi(value);           
-        else if (!strcmp(name, JPG_RES))
-          jpgRes = atoi(value);           
-        else if (!strcmp(name, CONTRAST))
-          contr = atoi(value);           
-        else if (!strcmp(name, BRIGHTNESS))
-          bright = atoi(value);           
-        else if (!strcmp(name, EXPOSURE))
-          expose = atoi(value);           
+        fmt = atoi(value);
+        snap = (fmt == uCamIII_COMP_JPEG) ? uCamIII_SNAP_JPEG : uCamIII_SNAP_RAW;
       }
+      else if (!strcmp(name, RAW_RES))
+        rawRes = atoi(value);           
+      else if (!strcmp(name, JPG_RES))
+        jpgRes = atoi(value);           
+      else if (!strcmp(name, CONTRAST))
+        contr = atoi(value);           
+      else if (!strcmp(name, BRIGHTNESS))
+        bright = atoi(value);           
+      else if (!strcmp(name, EXPOSURE))
+        expose = atoi(value);           
     }
-    snprintf(strScript, sizeof(strScript), (const char*)script, fmt, rawRes, jpgRes, contr, bright, expose);
-    server.print(strScript);
+    }
+    
+    res = (fmt == uCamIII_COMP_JPEG) ? jpgRes : rawRes;
+    if (snap >= 0 && fmt > 0 && res > 0)
+      prepareCam((uCamIII_SNAP_TYPE)snap, (uCamIII_IMAGE_FORMAT)fmt, (uCamIII_RES)res, 
+                 (uCamIII_CBE)contr, (uCamIII_CBE)bright, (uCamIII_CBE)expose);
+
+    snprintf(strScript, sizeof(strScript), (const char*)script, 
+           fmt, rawRes, jpgRes, contr, bright, expose, 
+           (const char*)Time.format(imageTime, "%FT%T"), tzHours, tzMinutes);
   }
-
+  server.printP(Page_start);
+  server.printP(camBody);
+  server.print(strScript);
   server.printP(Page_end);
-
-  res = (fmt == uCamIII_COMP_JPEG) ? jpgRes : rawRes;
-  if (snap >= 0 && fmt > 0 && res > 0)
-    takePicture((uCamIII_SNAP_TYPE)snap, (uCamIII_IMAGE_FORMAT)fmt, (uCamIII_RES)res, 
-                (uCamIII_CBE)contr, (uCamIII_CBE)bright, (uCamIII_CBE)expose);
 }
 
 void imageCmd(WebServer &server, WebServer::ConnectionType type, char *url_tail, bool tail_complete)
 {
   Log.trace(__FUNCTION__); 
-  if (!imageSize) return;
-  
-  if (imageType == uCamIII_SNAP_RAW) 
+
+  if (imageSize = ucam.getPicture((uCamIII_PIC_TYPE)imageType))
   {
-    Log.trace("BMP %dx%dx%d", imageWidth, imageHeight, imagePxDepth);
-    sendBmpHeader(server, imageWidth, imageHeight, imagePxDepth);
-  }
+    Log.info("\r\nImageSize: %d", imageSize);
 
-  server.write(imageBuffer, imageSize);
+    if (imageType == uCamIII_SNAP_JPEG)
+    {
+      Log.info("get JPEG chunks");
+      for (int received = 0, chunk = 0; (received < imageSize) && (chunk = ucam.getJpegData(&imageBuffer[constrain(received, 0, sizeof(imageBuffer)-512)], 512, callbackWebServer)); received += chunk);
+    }
+    else if (imageSize <= sizeof(imageBuffer)) 
+    {
+      Log.info("get RAW image");
+
+      int offset = bmpHeader(imageBuffer, sizeof(imageBuffer), imageWidth, imageHeight, imagePxDepth);
+Log.trace("after bmpHeader (%d)", offset);
+      int size   = ucam.getRawData(&imageBuffer[offset], imageSize, NULL);
+Log.trace("after getRawData (%d)", size);
+
+      if (imagePxDepth == 16) 
+      {
+        for (int i = offset; i < imageSize + offset; i += 2)    // raw image comes big-endian and upside down from cam,
+        {                                                       // this block corrects endianness
+          uint8_t dmy = imageBuffer[i];
+          imageBuffer[i] = imageBuffer[i+1];
+          imageBuffer[i+1] = dmy;
+        }
+      }
+        
+Log.trace("before server write (%d + %d = %d / %d == %d)", imageSize, offset, imageSize + offset, imageSize, size);
+      server.write(imageBuffer, imageSize + offset);
+Log.trace("after server write (%d + %d = %d / %d == %d)", imageSize, offset, imageSize + offset, imageSize, size);
+    }
+else
+{
+Log.trace("raw too big for buffer %d <= %d", imageSize, sizeof(imageBuffer));
 }
+    digitalWrite(D7, LOW);
+  }
+  
+  //server.write(imageBuffer, imageSize);
+}
+#endif
+// ------------------------------------------------------------------------------------------------------------------------
 
+// -------------------------------------   helper function for bitmap headers   -------------------------------------------
 struct BITMAPFILEHEADER 
 {
   uint16_t   bfType;            // file type BM (0x424d)                        [  0]
@@ -478,68 +509,63 @@ struct BITMAPV5HEADER
 */
 } __attribute__((__packed__));
 
-void sendBmpHeader(WebServer &server, int width, int height, int bits, int encoding, int padding)  
+int bmpHeader(uint8_t *buf, int len, int width, int height, int bits, int encoding, int padding)  
 {  
   Log.trace(__FUNCTION__); 
 
-  BITMAPFILEHEADER  bmpFileHeader;
-  BITMAPV5HEADER    bmpInfoHeader;
-  uint32_t          headerSize      = sizeof(bmpFileHeader) 
-                                    + sizeof(bmpInfoHeader);
+  uint32_t          headerSize      = sizeof(BITMAPFILEHEADER) 
+                                    + sizeof(BITMAPV5HEADER);
   uint32_t          paletteSize     = (bits <= 8) ? (1 << (bits+2)) : 0;    // optional palette
   uint32_t          pixelDataSize   = height * ((width * (bits / 8)) + padding);  
 
+  BITMAPFILEHEADER *bmpFileHeader   = (BITMAPFILEHEADER*)buf;
+  BITMAPV5HEADER   *bmpInfoHeader   = (BITMAPV5HEADER*)(buf + sizeof(BITMAPFILEHEADER));
+  uint8_t          *bmpPalette      = buf + headerSize; 
+
+  if (len < headerSize + paletteSize) return 0;
+
   /// ToDo: where do we set encoding R5G6B5 vs. CrYCbY?
 
-  memset(&bmpFileHeader, 0, sizeof(bmpFileHeader));
-  bmpFileHeader.bfType              = 0x4D42;                               // magic number "BM"
-  bmpFileHeader.bfSize              = headerSize 
-                                    + paletteSize
-                                    + pixelDataSize;
-  //bmpFileHeader.bfReserved1         =
-  //bmpFileHeader.bfReserved2         = 0;
-  bmpFileHeader.bfOffBits           = headerSize
-                                    + paletteSize;
+  memset(bmpFileHeader, 0, sizeof(BITMAPFILEHEADER));
+  bmpFileHeader->bfType              = 0x4D42;                               // magic number "BM"
+  bmpFileHeader->bfSize              = headerSize 
+                                     + paletteSize
+                                     + pixelDataSize;
+  //bmpFileHeader->bfReserved1         =
+  //bmpFileHeader->bfReserved2         = 0;
+  bmpFileHeader->bfOffBits           = headerSize
+                                     + paletteSize;
 
-  memset(&bmpInfoHeader, 0, sizeof(bmpInfoHeader));
-  bmpInfoHeader.Size                = sizeof(bmpInfoHeader);  
-  bmpInfoHeader.Width               = width;                               
-  bmpInfoHeader.Height              = -height;                              // negative height flips vertically
+  memset(bmpInfoHeader, 0, sizeof(BITMAPV5HEADER));
+  bmpInfoHeader->Size                = sizeof(BITMAPV5HEADER);  
+  bmpInfoHeader->Width               = width;                               
+  bmpInfoHeader->Height              = -height;                              // negative height flips vertically
                                                                             // so image isn't upside down 
                                                                             // but Google Chorme doesn't support that!!! 
-  bmpInfoHeader.Planes              = 1;  
-  bmpInfoHeader.BitsPerPixel        = bits;  
-  //bmpInfoHeader.Compression         = 0; 
-  bmpInfoHeader.SizeOfBitmap        = 0x03;                                 // BI_RGB (0), BI_BITFIELD (3)
-  bmpInfoHeader.HorzResolution      = 0x1000; 
-  bmpInfoHeader.VertResolution      = 0x1000; 
-  bmpInfoHeader.ColorsUsed          =     
-  bmpInfoHeader.ColorsImportant     = (bits <= 8) ? (1 << bits) : 0;        // <= 8bit use color palette
+  bmpInfoHeader->Planes              = 1;  
+  bmpInfoHeader->BitsPerPixel        = bits;  
+  //bmpInfoHeader->Compression         = 0; 
+  bmpInfoHeader->SizeOfBitmap        = 0x03;                                 // BI_RGB (0), BI_BITFIELD (3)
+  bmpInfoHeader->HorzResolution      = 0x1000; 
+  bmpInfoHeader->VertResolution      = 0x1000; 
+  bmpInfoHeader->ColorsUsed          =     
+  bmpInfoHeader->ColorsImportant     = (bits <= 8) ? (1 << bits) : 0;        // <= 8bit use color palette
   if (bits == 16)
   {  
-    bmpInfoHeader.RedMask           = 0x0000f800;
-	bmpInfoHeader.GreenMask         = 0x000007e0;
-	bmpInfoHeader.BlueMask          = 0x0000001f;
+    bmpInfoHeader->RedMask           = 0x0000f800;
+	bmpInfoHeader->GreenMask         = 0x000007e0;
+	bmpInfoHeader->BlueMask          = 0x0000001f;
   }
 
-  server.write((uint8_t*)&bmpFileHeader, sizeof(bmpFileHeader));
-  server.write((uint8_t*)&bmpInfoHeader, sizeof(bmpInfoHeader));
-
-  for (int c = 0; c < bmpInfoHeader.ColorsUsed; c++)                         // grayscale color table
+  for (int c = 0; c < bmpInfoHeader->ColorsUsed; c++)                         // grayscale color table
   {
-    uint8_t color = 255 * c / (bmpInfoHeader.ColorsUsed - 1);
-    uint8_t grey[4] = { color, color, color, 0xFF };
-    server.write(grey, sizeof(grey));  
+    uint8_t color = 255 * c / (bmpInfoHeader->ColorsUsed - 1);
+    *(bmpPalette++) = color;
+    *(bmpPalette++) = color;
+    *(bmpPalette++) = color;
+    *(bmpPalette++) = 0xFF;
   }
-
-  if (bits == 16) 
-  {
-    for (int i = 0; i < imageSize; i += 2)                          // raw image comes big-endian and upside down from cam,
-    {                                                               // this block corrects endianness
-      uint8_t dmy = imageBuffer[i];
-      imageBuffer[i] = imageBuffer[i+1];
-      imageBuffer[i+1] = dmy;
-    }
-  }
+  Log.trace("BMP data offset: %d + %d + %d = %d, BMP file size: %d",  
+    sizeof(BITMAPFILEHEADER), sizeof(BITMAPV5HEADER), paletteSize, bmpFileHeader->bfOffBits, bmpFileHeader->bfSize);
+  return bmpFileHeader->bfOffBits;
 }  
-#endif
