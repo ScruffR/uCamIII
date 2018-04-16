@@ -31,8 +31,9 @@ It will provide a `Particle.function("snap")` that can be triggered with paramet
 send it via `Serial` or `TCP` (provided via `Particle.function("setTarget")`) where it 
 can be dumped into a file.
 For the TCP data sink you need to be running a server like the provided ['imageReceiver.js'](/server/imageReceiver.js)
-and inform the device of the IP and port for the server. This is done via
-`Particle.function("setServer")` in the form `###.###.###.###:port`.
+(run the server from its file location via `node ./imageReceiver.js`) and inform the 
+device of the IP and port for the server. This is done via `Particle.function("setServer")`
+in the form `###.###.###.###:port`.
 
 For WiFi devices it also provides a Webserver which lets you select image format and
 resolution and displays the image. 
