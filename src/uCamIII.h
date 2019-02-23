@@ -209,9 +209,9 @@ template <class serial>
 class uCamIII : public uCamIII_Base {
 public:
   uCamIII(serial& camera, int resetPin = -1, uint32_t timeout = 500) 
-  : uCamIII_Base(camera, resetPin, timeout), _cameraInterface(camera) { Log.trace(__FUNCTION__); } 
+  : uCamIII_Base(camera, resetPin, timeout), _cameraInterface(camera) { } 
   uCamIII(serial *camera, int resetPin = -1, uint32_t timeout = 500) 
-  : uCamIII_Base(*camera, resetPin, timeout), _cameraInterface(*camera) { Log.trace(__FUNCTION__); } 
+  : uCamIII_Base(*camera, resetPin, timeout), _cameraInterface(*camera) { } 
 
   long init(int baudrate = 9600) { 
     Log.trace("uCAMIII: %s", __FUNCTION__);
