@@ -24,7 +24,6 @@ uCamIII<ParticleSoftSerial> ucamSW(pss);
 ```
 
 ## Example Firmware uCamTest:
-## Example Firmware uCamTest:
 This sketch demonstrates how to use the uCamIII library.
 It will provide a `Particle.function("snap")` that can be triggered with parameters
 `GRAY8` (default for wrong parameters too), `RGB16`, `UYVY16` and `JPG` to take a pic and 
